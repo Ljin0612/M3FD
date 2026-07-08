@@ -77,7 +77,7 @@ def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     mpre = np.concatenate(([1.0], precision, [0.0]))
     mpre = np.flip(np.maximum.accumulate(np.flip(mpre)))
     x = np.linspace(0, 1, 101)
-    return float(np.trapz(np.interp(x, mrec, mpre), x))
+    return float(np.trapezoid(np.interp(x, mrec, mpre), x))
 
 
 def ap_per_class(preds: List[BoxRecord], gts: List[BoxRecord], iou_thresholds: Sequence[float] | None = None, nc: int = NC) -> Dict:
@@ -104,12 +104,16 @@ def ap_per_class(preds: List[BoxRecord], gts: List[BoxRecord], iou_thresholds: S
                 candidates = gt_by_key.get((pred.image_id, cls), [])
                 boxes = np.asarray([g.box for g in candidates], dtype=float)
                 ious = xyxy_iou(pred.box, boxes)
-                if ious.size and float(ious.max()) >= thr:
-                    j = int(ious.argmax())
-                    key = (pred.image_id, j)
-                    if not matched.get(key, False):
+                if ious.size:
+                    candidate_idxs = np.flatnonzero(ious >= thr)
+                    unmatched_idxs = [
+                        int(j) for j in candidate_idxs
+                        if not matched.get((pred.image_id, int(j)), False)
+                    ]
+                    if unmatched_idxs:
+                        j = max(unmatched_idxs, key=lambda idx: float(ious[idx]))
                         tp[i] = 1.0
-                        matched[key] = True
+                        matched[(pred.image_id, j)] = True
                     else:
                         fp[i] = 1.0
                 else:
