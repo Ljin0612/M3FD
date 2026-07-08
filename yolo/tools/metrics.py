@@ -77,7 +77,10 @@ def compute_ap(recall: np.ndarray, precision: np.ndarray) -> float:
     mpre = np.concatenate(([1.0], precision, [0.0]))
     mpre = np.flip(np.maximum.accumulate(np.flip(mpre)))
     x = np.linspace(0, 1, 101)
-    return float(np.trapezoid(np.interp(x, mrec, mpre), x))
+    area_fn = getattr(np, "trapezoid", None)
+    if area_fn is None:
+        area_fn = np.trapz
+    return float(area_fn(np.interp(x, mrec, mpre), x))
 
 
 def ap_per_class(preds: List[BoxRecord], gts: List[BoxRecord], iou_thresholds: Sequence[float] | None = None, nc: int = NC) -> Dict:
