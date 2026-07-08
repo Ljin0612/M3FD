@@ -1,0 +1,5 @@
+# Example local paths for the M3FD YOLO baseline.
+raw_root: /home/jinlei/database/M3FD_Detection
+prepared_root: yolo/datasets/m3fd_yolo
+visible_data: yolo/configs/m3fd_visible.yaml
+infrared_data: yolo/configs/m3fd_infrared.yaml
