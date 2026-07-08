@@ -26,6 +26,7 @@ import models.backbone.mcmae.models_convmae as models_convmae
 from loss.cross_modality_loss import attention_simi_guided_loss
 from loss.RGB_distillation_loss import RGB_patch_simi_loss
 import utils.utils as utils
+from utils.torch_compat import torch_load
 from utils.IR_info_richness import gray_value_rank
 
 # Get names of all callable, lowercase, non-private torchvision model architectures
@@ -53,8 +54,18 @@ def get_args_parser():
     parser = argparse.ArgumentParser('MCMAE', add_help=False)
     parser.add_argument('--config', default='./configs/mcmae.yaml')
     # I/O related arguments
-    parser.add_argument('--output_dir', default="/path/to/your/output_dir", type=str,
+    parser.add_argument('--output_dir', '--output', dest='output_dir', default="univ/runs/pretrain", type=str,
                         help='Path to save logs and checkpoints.')
+    parser.add_argument('--data', '--root', dest='data', default=None, type=str,
+                        help='Optional dataset root override. For UNIV pretraining this expects one or more roots separated by commas.')
+    parser.add_argument('--weights', '--univ-weights', dest='weights', default=None, type=str,
+                        help='Optional ConvMAE/UNIV checkpoint override.')
+    parser.add_argument('--device', default=None, type=str,
+                        help='CUDA device id for single-node runs, or cpu for CPU diagnostics.')
+    parser.add_argument('--batch', default=None, type=int, help='Override training.batch_size_per_gpu.')
+    parser.add_argument('--imgsz', default=None, type=int, help='Reserved for downstream M3FD detector scripts.')
+    parser.add_argument('--epochs', default=None, type=int, help='Override training.epochs.')
+    parser.add_argument('--seed', default=None, type=int, help='Override training.seed.')
 
     # Training and optimization arguments
     parser.add_argument('--use_fp16', type=utils.bool_flag, default=True,
@@ -85,12 +96,22 @@ def get_args_parser():
 
 # Main training function
 def train(args, config):
+    if args.data:
+        config.dataset.path = [p.strip() for p in args.data.split(",") if p.strip()]
+    if args.weights:
+        config.model.pretrain_model_path = args.weights
+    if args.batch is not None:
+        config.training.batch_size_per_gpu = args.batch
+    if args.epochs is not None:
+        config.training.epochs = args.epochs
+    if args.seed is not None:
+        config.training.seed = args.seed
     # Initialize distributed training mode
     utils.init_distributed_mode(args)
     # Fix random seeds for reproducibility
     utils.fix_random_seeds(config.training.seed)
     # Print all command-line arguments
-    print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
+    print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())), flush=True)
     # Enable cudnn benchmark for faster convolution
     cudnn.benchmark = True
 
@@ -113,7 +134,7 @@ def train(args, config):
         pin_memory=True,
         drop_last=True,
     )
-    print(f"Data loaded: there are {len(dataset)} image pairs.")
+    print(f"Data loaded: there are {len(dataset)} image pairs.", flush=True)
 
     # ============ building student and teacher networks... ============
     # Initialize student and teacher networks
@@ -135,11 +156,11 @@ def train(args, config):
 
     student = nn.parallel.DistributedDataParallel(student, device_ids=[args.local_rank], find_unused_parameters=True)
     # Load pre-trained weights for student and teacher
-    student.module.load_state_dict(torch.load(config.model.pretrain_model_path, map_location="cpu")['model'], strict=False)
+    student.module.load_state_dict(torch_load(config.model.pretrain_model_path, map_location="cpu", weights_only=False)['model'], strict=False)
     try:
-        teacher.module.load_state_dict(torch.load(config.model.pretrain_model_path, map_location="cpu")['model'], strict=False)
+        teacher.module.load_state_dict(torch_load(config.model.pretrain_model_path, map_location="cpu", weights_only=False)['model'], strict=False)
     except:
-        teacher.load_state_dict(torch.load(config.model.pretrain_model_path, map_location="cpu")['model'], strict=False)
+        teacher.load_state_dict(torch_load(config.model.pretrain_model_path, map_location="cpu", weights_only=False)['model'], strict=False)
 
     # Don't compute gradients for teacher since no backprop
     for p in teacher_without_ddp.parameters():
@@ -156,7 +177,7 @@ def train(args, config):
                             )
         student.module = get_peft_model(student.module, lora_config)
 
-    print(f"teacher backbone loaded, student initialized ---------------")
+    print(f"teacher backbone loaded, student initialized ---------------", flush=True)
 
     # ============ preparing loss... ============
     if config.loss.cross_modality_loss == 'attention_simi_guided_loss':
@@ -201,9 +222,9 @@ def train(args, config):
         config.training.epochs, len(data_loader),
     )
 
-    print(f"Loss, optimizer and schedulers ready.")
+    print(f"Loss, optimizer and schedulers ready.", flush=True)
     start_time = time.time()
-    print("Starting UNIV training!")
+    print("Starting UNIV training!", flush=True)
 
     for epoch in range(0, config.training.epochs):
         data_loader.sampler.set_epoch(epoch)
@@ -239,7 +260,7 @@ def train(args, config):
                 f.write(json.dumps(log_stats) + "\n")
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-    print('Training time {}'.format(total_time_str))
+    print('Training time {}'.format(total_time_str), flush=True)
 
 
 # Function to train for one epoch

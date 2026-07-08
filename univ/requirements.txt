@@ -1,0 +1,16 @@
+# PyTorch/torchvision/torchaudio should be installed separately for the
+# server CUDA version. This file only manages ordinary Python dependencies
+# needed by the UNIV code in this repository.
+timm>=0.9
+einops>=0.6
+opencv-python>=4.8
+pillow>=9
+numpy
+scipy
+pandas
+matplotlib
+tqdm
+pyyaml
+scikit-learn
+tensorboard
+peft>=0.10

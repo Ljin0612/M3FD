@@ -11,7 +11,7 @@ training:
   weight_decay_end: 0.5
 
 model:
-  pretrain_model_path: "/path/to/convmae_base.pth"
+  pretrain_model_path: "univ/pretrained/checkpoint0400.pth"
   use_lora: True
   lora_config:
     target_modules: ["decoder_embed", "fc1", "qkv", "fc2", "proj", "decoder_pred", "patch_embed4"]
@@ -29,12 +29,7 @@ loss:
   ir_info: False
 
 dataset:
-  path: 
-    - "/path/to/MVIP/FLIR-ALIGN"
-    - "/path/to/MVIP/KAIST_MMSEG"
-    - "/path/to/MVIP/LasHeR0428_rename"
-    - "/path/to/MVIP/LLVIP"
-    - "/path/to/MVIP/VisDrone"
+  path: []
   mean_RGB: 
     !!python/tuple
     - 0.485

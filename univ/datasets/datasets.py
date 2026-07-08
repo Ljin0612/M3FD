@@ -6,13 +6,11 @@ from datasets.transforms.co_transform import CoTransCompose
 class RGB_pair_IR_dataset(Dataset):
     def __init__(self, 
                  transform:CoTransCompose, 
-                 data_path=['/public/home/public/IRPretrainDataset/FLIR-ALIGN',
-                            '/public/home/public/IRPretrainDataset/KAIST_MMSEG',
-                            '/public/home/public/IRPretrainDataset/LasHeR0428_rename',
-                            '/public/home/public/IRPretrainDataset/LLVIP',
-                            '/public/home/public/IRPretrainDataset/VisDrone']
+                 data_path=None
                  ):
         super().__init__()
+        if data_path is None:
+            data_path = []
         self.rgb = []
         self.inf = []
         
@@ -31,9 +29,9 @@ class RGB_pair_IR_dataset(Dataset):
             rgb_filename = os.path.basename(rgb_path)
             inf_filename = os.path.basename(inf_path)
             if rgb_filename != inf_filename:
-                print(f"Mismatch detected!")
-                print(f"RGB filename: {rgb_filename}")
-                print(f"INF filename: {inf_filename}")
+                print(f"Mismatch detected!", flush=True)
+                print(f"RGB filename: {rgb_filename}", flush=True)
+                print(f"INF filename: {inf_filename}", flush=True)
                 assert rgb_filename == inf_filename
 
         assert len(self.rgb) == len(self.inf)
