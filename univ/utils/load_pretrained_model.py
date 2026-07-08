@@ -1,9 +1,10 @@
 import torch 
 from torch import nn
+from utils.torch_compat import torch_load
 
 def load_model_backbone(model:nn.Module,pretrain_path,model_name):
 
-    saved_model = torch.load(pretrain_path,map_location='cpu') 
+    saved_model = torch_load(pretrain_path, map_location='cpu', weights_only=False) 
     # for key, value in saved_model.items():
     #     print(f"{key}") 
 
@@ -30,7 +31,7 @@ def load_model_backbone(model:nn.Module,pretrain_path,model_name):
 
 def load_model_head(model:nn.Module,pretrain_path,model_name):
 
-    saved_model = torch.load(pretrain_path,map_location='cpu') 
+    saved_model = torch_load(pretrain_path, map_location='cpu', weights_only=False) 
     # for key, value in saved_model.items():
     #     print(f"{key}") 
 
@@ -52,4 +53,4 @@ def load_model_head(model:nn.Module,pretrain_path,model_name):
 
 
 if __name__ == "__main__":
-    load_model_backbone(None,'/public/home/wangshuo/ir_pretrain/dino/dino_vitbase16_pretrain.pth')
+    load_model_backbone(None, 'univ/pretrained/checkpoint0400.pth', 'model')
