@@ -76,7 +76,7 @@ yolo/datasets/m3fd_yolo/infrared/images/{train,val,test}
 yolo/datasets/m3fd_yolo/infrared/labels/{train,val,test}
 ```
 
-It also writes `yolo/configs/m3fd_visible.yaml` and `yolo/configs/m3fd_infrared.yaml`. Labels are checked as YOLO `class cx cy w h` with normalized coordinates in `[0, 1]`; abnormal labels are printed as warnings.
+It also writes `yolo/configs/m3fd_visible.yaml` and `yolo/configs/m3fd_infrared.yaml`. Labels are checked as YOLO `class cx cy w h` with normalized coordinates in `[0, 1]`; abnormal labels are printed as warnings. The preparation script is safe to run repeatedly: before repopulating each modality/split, it refreshes the managed `images/<split>` and `labels/<split>` output directories so stale symlinks or copied files from older meta splits are removed.
 
 ## 3. Data checking
 

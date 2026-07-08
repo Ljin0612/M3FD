@@ -25,6 +25,14 @@ def find_image(folder: Path, stem: str):
     matches=list(folder.glob(stem+'.*'))
     return matches[0] if matches else None
 
+def reset_managed_dir(path: Path):
+    """Remove stale files from a prepare-managed output split directory."""
+    if path.is_symlink() or path.is_file():
+        path.unlink()
+    elif path.exists():
+        shutil.rmtree(path)
+    path.mkdir(parents=True, exist_ok=True)
+
 def link_or_copy(src: Path, dst: Path, mode: str):
     dst.parent.mkdir(parents=True, exist_ok=True)
     if dst.exists() or dst.is_symlink(): dst.unlink()
@@ -74,6 +82,9 @@ def main():
         meta=root/'meta'/f'{split}.txt'
         if not meta.exists(): raise FileNotFoundError(meta)
         ids=read_ids(meta); counts[split]=len(ids)
+        for modality in ['visible', 'infrared']:
+            reset_managed_dir(out/modality/'images'/split)
+            reset_managed_dir(out/modality/'labels'/split)
         for stem in ids:
             lab=root/'labels'/f'{stem}.txt'
             if lab.exists(): check_label(lab)
