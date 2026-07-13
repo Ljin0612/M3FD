@@ -56,6 +56,65 @@ def decode(preds, imgsz: int, conf_thres: float):
     return merged
 
 
+def _average_precision(tp_flags: torch.Tensor, scores: torch.Tensor, n_gt: int) -> torch.Tensor:
+    if n_gt == 0:
+        return scores.new_tensor(float("nan"))
+    if scores.numel() == 0:
+        return scores.new_tensor(0.0)
+    order = torch.argsort(scores, descending=True)
+    tp_sorted = tp_flags[order].float()
+    fp_sorted = 1.0 - tp_sorted
+    tp_cum = torch.cumsum(tp_sorted, 0)
+    fp_cum = torch.cumsum(fp_sorted, 0)
+    recall = tp_cum / max(n_gt, 1)
+    precision = tp_cum / (tp_cum + fp_cum).clamp_min(1e-9)
+    mrec = torch.cat([recall.new_tensor([0.0]), recall, recall.new_tensor([1.0])])
+    mpre = torch.cat([precision.new_tensor([1.0]), precision, precision.new_tensor([0.0])])
+    for i in range(mpre.numel() - 2, -1, -1):
+        mpre[i] = torch.maximum(mpre[i], mpre[i + 1])
+    idx = torch.where(mrec[1:] != mrec[:-1])[0]
+    return torch.sum((mrec[idx + 1] - mrec[idx]) * mpre[idx + 1])
+
+
+def class_aware_ap(detections, targets, iou_thresholds: torch.Tensor, nc: int):
+    per_thr_cls = torch.zeros((len(iou_thresholds), nc), dtype=torch.float32)
+    gt_counts = torch.zeros(nc, dtype=torch.float32)
+    for ti, threshold in enumerate(iou_thresholds):
+        for c in range(nc):
+            scores = []
+            tp_flags = []
+            n_gt = 0
+            for det, gt in zip(detections, targets):
+                pred_c = det[det[:, 5].long() == c] if det.numel() else det.new_zeros((0, 6))
+                gt_c = gt[gt[:, 0].long() == c] if gt.numel() else gt.new_zeros((0, 5))
+                n_gt += gt_c.shape[0]
+                if ti == 0:
+                    gt_counts[c] += gt_c.shape[0]
+                if pred_c.numel() == 0:
+                    continue
+                order = torch.argsort(pred_c[:, 4], descending=True)
+                pred_c = pred_c[order]
+                matched_gt = set()
+                for pred in pred_c:
+                    scores.append(pred[4].detach().cpu())
+                    if gt_c.numel() == 0:
+                        tp_flags.append(torch.tensor(0.0))
+                        continue
+                    ious = box_iou(pred[None, :4], gt_c[:, 1:5]).squeeze(0)
+                    best_iou, best_gt = ious.max(0)
+                    gi = int(best_gt)
+                    if best_iou >= threshold and gi not in matched_gt:
+                        tp_flags.append(torch.tensor(1.0))
+                        matched_gt.add(gi)
+                    else:
+                        tp_flags.append(torch.tensor(0.0))
+            score_tensor = torch.stack(scores) if scores else torch.zeros(0)
+            tp_tensor = torch.stack(tp_flags) if tp_flags else torch.zeros(0)
+            per_thr_cls[ti, c] = _average_precision(tp_tensor, score_tensor, n_gt)
+    valid = gt_counts > 0
+    return per_thr_cls, valid
+
+
 def main() -> int:
     args = parse_args()
     cfg = load_yaml(args.config)
@@ -63,52 +122,64 @@ def main() -> int:
     imgsz = args.imgsz or int(cfg.get("imgsz", 224))
     batch = args.batch or int(cfg.get("batch", 4))
     fusion = cfg.get("fusion", "concat")
-    device = torch.device(args.device or ("cuda" if torch.cuda.is_available() else "cpu"))
+    device_arg = args.device
+    if device_arg and device_arg.isdigit():
+        device_arg = f"cuda:{device_arg}" if torch.cuda.is_available() else "cpu"
+    device = torch.device(device_arg or ("cuda" if torch.cuda.is_available() else "cpu"))
     model = M3FDUNIVRGBTYOLOv8StyleDetector(nc=NC, imgsz=imgsz, fusion=fusion).to(device)
     ckpt = torch.load(args.weights, map_location="cpu")
     model.load_state_dict(ckpt.get("model", ckpt), strict=False)
     model.eval()
     ds = M3FDRGBTDetectionDataset(data, split=args.split, imgsz=imgsz)
     dl = DataLoader(ds, batch_size=batch, shuffle=False, num_workers=0, collate_fn=collate_m3fd)
-    tp = torch.zeros(NC); fp = torch.zeros(NC); fn = torch.zeros(NC)
-    ap50 = torch.zeros(NC)
     iou_thresholds = torch.arange(0.50, 0.96, 0.05)
-    map_hits = []
+    all_dets = []
+    all_targets = []
     with torch.no_grad():
         for b in dl:
             preds = model(b["visible"].to(device), b["infrared"].to(device))
             dets = decode(preds, imgsz, args.conf)
             for det, target in zip(dets, b["targets"]):
                 gt = xywhn_to_xyxy_abs(target, imgsz, imgsz).to(det.device)
-                matched = set()
-                for c in range(NC):
-                    d = det[det[:, 5].long() == c]
-                    g = gt[gt[:, 0].long() == c]
-                    if d.numel() == 0:
-                        fn[c] += len(g); continue
-                    if g.numel() == 0:
-                        fp[c] += len(d); continue
-                    ious = box_iou(d[:, :4], g[:, 1:5])
-                    best_iou, best_gt = ious.max(1)
-                    for i, iou in enumerate(best_iou):
-                        gi = int(best_gt[i])
-                        if iou >= 0.5 and gi not in matched:
-                            tp[c] += 1; matched.add(gi)
-                        else:
-                            fp[c] += 1
-                    fn[c] += max(0, len(g) - len(matched))
-                    ap50[c] = tp[c] / (tp[c] + fp[c] + fn[c]).clamp_min(1)
-                if gt.numel():
-                    all_iou = box_iou(det[:, :4], gt[:, 1:5]) if det.numel() else gt.new_zeros((0, gt.shape[0]))
-                    map_hits.extend([(all_iou.max(0).values >= t).float().mean().item() if all_iou.numel() else 0.0 for t in iou_thresholds])
+                all_dets.append(det.detach().cpu())
+                all_targets.append(gt.detach().cpu())
+    per_thr_cls, valid_classes = class_aware_ap(all_dets, all_targets, iou_thresholds, NC)
+    ap50 = per_thr_cls[0]
+    ap5095 = torch.nanmean(per_thr_cls, 0)
+    valid_ap50 = ap50[valid_classes]
+    valid_ap5095 = per_thr_cls[:, valid_classes]
+    # Dataset-level precision/recall use the same class-aware matching at IoU=0.50.
+    tp = torch.zeros(NC); fp = torch.zeros(NC); fn = torch.zeros(NC)
+    for det, gt in zip(all_dets, all_targets):
+        for c in range(NC):
+            pred_c = det[det[:, 5].long() == c] if det.numel() else det.new_zeros((0, 6))
+            gt_c = gt[gt[:, 0].long() == c] if gt.numel() else gt.new_zeros((0, 5))
+            matched_gt = set()
+            if pred_c.numel():
+                pred_c = pred_c[torch.argsort(pred_c[:, 4], descending=True)]
+            for pred in pred_c:
+                if gt_c.numel() == 0:
+                    fp[c] += 1
+                    continue
+                ious = box_iou(pred[None, :4], gt_c[:, 1:5]).squeeze(0)
+                best_iou, best_gt = ious.max(0)
+                gi = int(best_gt)
+                if best_iou >= 0.5 and gi not in matched_gt:
+                    tp[c] += 1
+                    matched_gt.add(gi)
+                else:
+                    fp[c] += 1
+            fn[c] += max(0, gt_c.shape[0] - len(matched_gt))
     precision = (tp.sum() / (tp.sum() + fp.sum()).clamp_min(1)).item()
     recall = (tp.sum() / (tp.sum() + fn.sum()).clamp_min(1)).item()
     print(f"Precision: {precision:.6f}")
     print(f"Recall: {recall:.6f}")
-    print(f"mAP50: {ap50.mean().item():.6f}")
-    print(f"mAP50:95: {(sum(map_hits) / max(1, len(map_hits))):.6f}")
+    print(f"mAP50: {torch.nanmean(valid_ap50).item() if valid_ap50.numel() else 0.0:.6f}")
+    print(f"mAP50:95: {torch.nanmean(valid_ap5095).item() if valid_ap5095.numel() else 0.0:.6f}")
     for i, name in enumerate(CLASS_NAMES):
         print(f"AP50/{name}: {ap50[i].item():.6f}")
+    for i, name in enumerate(CLASS_NAMES):
+        print(f"AP50:95/{name}: {ap5095[i].item():.6f}")
     return 0
 
 

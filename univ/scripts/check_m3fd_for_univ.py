@@ -22,7 +22,7 @@ def main() -> int:
     root = Path(args.root).expanduser()
     print(f"Checking M3FD root: {root}", flush=True)
     ok = True
-    for sub in ["vi", "ir", "labels", "Annotation", "meta"]:
+    for sub in ["vi", "ir", "labels", "meta"]:
         path = root / sub
         exists = path.exists()
         ok &= exists
