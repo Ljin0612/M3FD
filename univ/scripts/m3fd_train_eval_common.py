@@ -89,25 +89,35 @@ def simple_detection_loss(preds: Sequence[torch.Tensor], targets: Sequence[torch
     obj_terms = []
     cls_terms = []
     box_terms = []
-    has_objects = torch.tensor([1.0 if t.numel() else 0.0 for t in targets], device=device).view(-1, 1, 1, 1)
-    cls_hist = torch.zeros((len(targets), nc), device=device)
-    box_mean = torch.zeros((len(targets), 4), device=device)
-    for i, t in enumerate(targets):
-        if t.numel():
-            cls_idx = t[:, 0].long().clamp(0, nc - 1).to(device)
-            cls_hist[i].scatter_add_(0, cls_idx, torch.ones_like(cls_idx, dtype=torch.float, device=device))
-            cls_hist[i] = cls_hist[i] / cls_hist[i].sum().clamp_min(1.0)
-            box_mean[i] = t[:, 1:5].to(device).mean(0)
     for p in preds:
+        bsz, h, w, _ = p.shape
         obj = p[..., 4]
         cls_logits = p[..., 5:]
         box = p[..., :4].sigmoid()
-        obj_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(obj, has_objects.expand_as(obj)))
-        cls_target = cls_hist[:, None, None, :].expand_as(cls_logits)
-        cls_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(cls_logits, cls_target))
-        box_target = box_mean[:, None, None, :].expand_as(box)
-        weight = has_objects[..., None].expand_as(box)
-        box_terms.append(torch.nn.functional.l1_loss(box * weight, box_target * weight))
+        obj_target = torch.zeros((bsz, h, w), device=device)
+        cls_target = torch.zeros((bsz, h, w, nc), device=device)
+        box_target = torch.zeros((bsz, h, w, 4), device=device)
+        pos_mask = torch.zeros((bsz, h, w), dtype=torch.bool, device=device)
+        for bi, t in enumerate(targets):
+            if t.numel() == 0:
+                continue
+            gt = t.to(device)
+            cls_idx = gt[:, 0].long().clamp(0, nc - 1)
+            cx = gt[:, 1].clamp(0, 1 - 1e-6)
+            cy = gt[:, 2].clamp(0, 1 - 1e-6)
+            gx = (cx * w).long().clamp(0, w - 1)
+            gy = (cy * h).long().clamp(0, h - 1)
+            obj_target[bi, gy, gx] = 1.0
+            cls_target[bi, gy, gx, cls_idx] = 1.0
+            box_target[bi, gy, gx] = gt[:, 1:5].clamp(0, 1)
+            pos_mask[bi, gy, gx] = True
+        obj_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(obj, obj_target))
+        if pos_mask.any():
+            cls_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(cls_logits[pos_mask], cls_target[pos_mask]))
+            box_terms.append(torch.nn.functional.l1_loss(box[pos_mask], box_target[pos_mask]))
+        else:
+            cls_terms.append(cls_logits.sum() * 0.0)
+            box_terms.append(box.sum() * 0.0)
     loss_box = torch.stack(box_terms).mean()
     loss_obj = torch.stack(obj_terms).mean()
     loss_cls = torch.stack(cls_terms).mean()

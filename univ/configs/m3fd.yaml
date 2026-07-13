@@ -1,3 +1,10 @@
+path: /home/jinlei/database/M3FD_Detection
+vi: vi
+ir: ir
+labels: labels
+train: meta/train.txt
+val: meta/val.txt
+test: meta/test.txt
 data: /home/jinlei/database/M3FD_Detection
 modality: rgb-ir
 fusion: concat
