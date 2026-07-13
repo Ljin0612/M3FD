@@ -13,7 +13,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from univ.scripts.datasets.m3fd_rgbt_detection_dataset import M3FDRGBTDetectionDataset
-from univ.scripts.m3fd_train_eval_common import append_csv, collate_m3fd, count_parameters, cuda_memory_string, ensure_dir, load_yaml, set_seed, simple_detection_loss, write_kv, NC
+from univ.scripts.m3fd_train_eval_common import append_csv, collate_m3fd, count_parameters, ensure_dir, load_yaml, set_seed, simple_detection_loss, write_kv, NC
 from univ.scripts.models.m3fd_univ_rgbt_yolov8style_detector import M3FDUNIVRGBTYOLOv8StyleDetector, load_univ_checkpoint
 
 
@@ -106,7 +106,7 @@ def main() -> int:
             row = {k: (float(losses[k].detach().cpu()) if k.startswith("loss") else locals()[k]) for k in fields}
             append_csv(out / "train_log.csv", row, fields)
             if batch_idx % 20 == 0:
-                print(f"epoch={epoch} batch_idx={batch_idx} loss_total={row['loss_total']:.4f} loss_box={row['loss_box']:.4f} loss_obj={row['loss_obj']:.4f} loss_cls={row['loss_cls']:.4f} {cuda_memory_string()}")
+                print(f"epoch={epoch} batch_idx={batch_idx} loss_total={row['loss_total']:.4f} loss_box={row['loss_box']:.4f} loss_obj={row['loss_obj']:.4f} loss_cls={row['loss_cls']:.4f}")
         last_loss = row["loss_total"]
         ckpt = {"model": model.state_dict(), "epoch": epoch, "args": vars(args), "load_report": report.__dict__}
         torch.save(ckpt, out / "last.pth")
