@@ -94,50 +94,50 @@ def simple_detection_loss(preds: Sequence[torch.Tensor], targets: Sequence[torch
         obj = p[..., 4]
         cls_logits = p[..., 5:]
         box = p[..., :4].sigmoid()
-        obj_target = torch.zeros((bsz, h, w), device=device)
-        cls_target = torch.zeros((bsz, h, w, nc), device=device)
-        box_target = torch.zeros((bsz, h, w, 4), device=device)
-        pos_mask = torch.zeros((bsz, h, w), dtype=torch.bool, device=device)
+        target_dtype = p.dtype
+        obj_target_cpu = torch.zeros((bsz, h, w), dtype=target_dtype)
+        cls_target_cpu = torch.zeros((bsz, h, w, nc), dtype=target_dtype)
+        box_target_cpu = torch.zeros((bsz, h, w, 4), dtype=target_dtype)
+        pos_mask_cpu = torch.zeros((bsz, h, w), dtype=torch.bool)
         for bi, t in enumerate(targets):
             if t.numel() == 0:
                 continue
-            gt = t.to(device)
-            cls_idx = gt[:, 0].long().clamp(0, nc - 1)
-            cx = gt[:, 1].clamp(0, 1 - 1e-6)
-            cy = gt[:, 2].clamp(0, 1 - 1e-6)
-            bw = gt[:, 3].clamp(0, 1)
-            bh = gt[:, 4].clamp(0, 1)
+            gt_cpu = t.detach().cpu()
+            cls_idx = gt_cpu[:, 0].long().clamp(0, nc - 1)
+            cx = gt_cpu[:, 1].clamp(0, 1 - 1e-6)
+            cy = gt_cpu[:, 2].clamp(0, 1 - 1e-6)
+            bw = gt_cpu[:, 3].clamp(0, 1)
+            bh = gt_cpu[:, 4].clamp(0, 1)
 
             cx_grid = cx * w
             cy_grid = cy * h
-            gx = cx_grid.long().clamp(0, w - 1)
-            gy = cy_grid.long().clamp(0, h - 1)
-            tx = cx_grid - gx.float()
-            ty = cy_grid - gy.float()
+            gx = cx_grid.floor().long().clamp(0, w - 1)
+            gy = cy_grid.floor().long().clamp(0, h - 1)
+            tx = cx_grid - gx.to(cx_grid.dtype)
+            ty = cy_grid - gy.to(cy_grid.dtype)
 
             # This is a simplified one-target-per-cell assignment. If multiple GT
             # centers fall into the same cell, the later GT in annotation order
             # overwrites the previous one deterministically. The decode inverse is
             # cx_abs ~= (gx + tx) / feature_w and cy_abs ~= (gy + ty) / feature_h;
             # widths/heights remain full-image normalized values.
-            for obj_i in range(gt.shape[0]):
-                c = int(cls_idx[obj_i].item())
-                x_idx = int(gx[obj_i].item())
-                y_idx = int(gy[obj_i].item())
+            for obj_i in range(gt_cpu.shape[0]):
+                c = int(cls_idx[obj_i])
+                x_idx = int(gx[obj_i])
+                y_idx = int(gy[obj_i])
 
-                tx_i = float(tx[obj_i].item())
-                ty_i = float(ty[obj_i].item())
-                bw_i = float(bw[obj_i].item())
-                bh_i = float(bh[obj_i].item())
-
-                obj_target[bi, y_idx, x_idx] = 1.0
-                cls_target[bi, y_idx, x_idx, :] = 0.0
-                cls_target[bi, y_idx, x_idx, c] = 1.0
-                box_target[bi, y_idx, x_idx, 0] = tx_i
-                box_target[bi, y_idx, x_idx, 1] = ty_i
-                box_target[bi, y_idx, x_idx, 2] = bw_i
-                box_target[bi, y_idx, x_idx, 3] = bh_i
-                pos_mask[bi, y_idx, x_idx] = True
+                obj_target_cpu[bi, y_idx, x_idx] = 1.0
+                cls_target_cpu[bi, y_idx, x_idx, :] = 0.0
+                cls_target_cpu[bi, y_idx, x_idx, c] = 1.0
+                box_target_cpu[bi, y_idx, x_idx, 0] = tx[obj_i]
+                box_target_cpu[bi, y_idx, x_idx, 1] = ty[obj_i]
+                box_target_cpu[bi, y_idx, x_idx, 2] = bw[obj_i]
+                box_target_cpu[bi, y_idx, x_idx, 3] = bh[obj_i]
+                pos_mask_cpu[bi, y_idx, x_idx] = True
+        obj_target = obj_target_cpu.to(device)
+        cls_target = cls_target_cpu.to(device)
+        box_target = box_target_cpu.to(device)
+        pos_mask = pos_mask_cpu.to(device)
         obj_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(obj, obj_target))
         if pos_mask.any():
             cls_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(cls_logits[pos_mask], cls_target[pos_mask]))
