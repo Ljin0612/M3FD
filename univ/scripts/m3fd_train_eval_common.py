@@ -105,11 +105,27 @@ def simple_detection_loss(preds: Sequence[torch.Tensor], targets: Sequence[torch
             cls_idx = gt[:, 0].long().clamp(0, nc - 1)
             cx = gt[:, 1].clamp(0, 1 - 1e-6)
             cy = gt[:, 2].clamp(0, 1 - 1e-6)
-            gx = (cx * w).long().clamp(0, w - 1)
-            gy = (cy * h).long().clamp(0, h - 1)
+            bw = gt[:, 3].clamp(0, 1)
+            bh = gt[:, 4].clamp(0, 1)
+
+            cx_grid = cx * w
+            cy_grid = cy * h
+            gx = cx_grid.long().clamp(0, w - 1)
+            gy = cy_grid.long().clamp(0, h - 1)
+            tx = cx_grid - gx.float()
+            ty = cy_grid - gy.float()
+
             obj_target[bi, gy, gx] = 1.0
             cls_target[bi, gy, gx, cls_idx] = 1.0
-            box_target[bi, gy, gx] = gt[:, 1:5].clamp(0, 1)
+            # Simplified YOLO-style assignment: if multiple GT boxes land in the
+            # same cell, later writes overwrite earlier ones without error. The
+            # decode inverse is cx_abs ~= (gx + tx) / feature_w and
+            # cy_abs ~= (gy + ty) / feature_h; widths/heights remain full-image
+            # normalized values.
+            box_target[bi, gy, gx, 0] = tx
+            box_target[bi, gy, gx, 1] = ty
+            box_target[bi, gy, gx, 2] = bw
+            box_target[bi, gy, gx, 3] = bh
             pos_mask[bi, gy, gx] = True
         obj_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(obj, obj_target))
         if pos_mask.any():
