@@ -115,18 +115,29 @@ def simple_detection_loss(preds: Sequence[torch.Tensor], targets: Sequence[torch
             tx = cx_grid - gx.float()
             ty = cy_grid - gy.float()
 
-            obj_target[bi, gy, gx] = 1.0
-            cls_target[bi, gy, gx, cls_idx] = 1.0
-            # Simplified YOLO-style assignment: if multiple GT boxes land in the
-            # same cell, later writes overwrite earlier ones without error. The
-            # decode inverse is cx_abs ~= (gx + tx) / feature_w and
-            # cy_abs ~= (gy + ty) / feature_h; widths/heights remain full-image
-            # normalized values.
-            box_target[bi, gy, gx, 0] = tx
-            box_target[bi, gy, gx, 1] = ty
-            box_target[bi, gy, gx, 2] = bw
-            box_target[bi, gy, gx, 3] = bh
-            pos_mask[bi, gy, gx] = True
+            # This is a simplified one-target-per-cell assignment. If multiple GT
+            # centers fall into the same cell, the later GT in annotation order
+            # overwrites the previous one deterministically. The decode inverse is
+            # cx_abs ~= (gx + tx) / feature_w and cy_abs ~= (gy + ty) / feature_h;
+            # widths/heights remain full-image normalized values.
+            for obj_i in range(gt.shape[0]):
+                c = int(cls_idx[obj_i].item())
+                x_idx = int(gx[obj_i].item())
+                y_idx = int(gy[obj_i].item())
+
+                tx_i = float(tx[obj_i].item())
+                ty_i = float(ty[obj_i].item())
+                bw_i = float(bw[obj_i].item())
+                bh_i = float(bh[obj_i].item())
+
+                obj_target[bi, y_idx, x_idx] = 1.0
+                cls_target[bi, y_idx, x_idx, :] = 0.0
+                cls_target[bi, y_idx, x_idx, c] = 1.0
+                box_target[bi, y_idx, x_idx, 0] = tx_i
+                box_target[bi, y_idx, x_idx, 1] = ty_i
+                box_target[bi, y_idx, x_idx, 2] = bw_i
+                box_target[bi, y_idx, x_idx, 3] = bh_i
+                pos_mask[bi, y_idx, x_idx] = True
         obj_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(obj, obj_target))
         if pos_mask.any():
             cls_terms.append(torch.nn.functional.binary_cross_entropy_with_logits(cls_logits[pos_mask], cls_target[pos_mask]))
