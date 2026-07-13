@@ -83,8 +83,14 @@ def main() -> int:
         "data path": data, "modality": modality, "fusion": fusion, "imgsz": imgsz, "batch": batch, "epochs": epochs,
         "univ_weights path": args.univ_weights, "weights_exists": report.weights_exists, "weights_loaded": report.weights_loaded,
         "checkpoint_key": report.checkpoint_key, "loaded_keys count": report.loaded_keys, "skipped_keys count": report.skipped_keys,
+        "interpolated_keys count": report.interpolated_keys, "missing_keys count": report.missing_keys, "unexpected_keys count": report.unexpected_keys,
+        "original pos_embed shape": report.original_pos_embed_shape, "final pos_embed shape": report.final_pos_embed_shape,
+        "requested imgsz": report.requested_imgsz, "encoder token grid size": report.encoder_token_grid_size,
         "freeze_backbone final value": freeze_final, "trainable parameter count": trainable, "frozen parameter count": frozen,
         "visible input shape": tuple(first["visible"].shape), "infrared input shape": tuple(first["infrared"].shape),
+        "visible feature shape": getattr(model, "last_visible_feature_shape", None), "infrared feature shape": getattr(model, "last_infrared_feature_shape", None),
+        "fused feature shape": getattr(model, "last_fused_feature_shape", None), "fuse input channels": model.fuse_input_channels,
+        "fuse output channels": model.fuse_output_channels,
         "prediction shape": [tuple(p.shape) for p in pred0],
     })
 
