@@ -128,7 +128,8 @@ def main() -> int:
     device = torch.device(device_arg or ("cuda" if torch.cuda.is_available() else "cpu"))
     model = M3FDUNIVRGBTYOLOv8StyleDetector(nc=NC, imgsz=imgsz, fusion=fusion).to(device)
     ckpt = torch.load(args.weights, map_location="cpu")
-    model.load_state_dict(ckpt.get("model", ckpt), strict=False)
+    state_dict = ckpt.get("model_state_dict", ckpt.get("model", ckpt)) if isinstance(ckpt, dict) else ckpt
+    model.load_state_dict(state_dict, strict=False)
     model.eval()
     ds = M3FDRGBTDetectionDataset(data, split=args.split, imgsz=imgsz)
     dl = DataLoader(ds, batch_size=batch, shuffle=False, num_workers=0, collate_fn=collate_m3fd)
