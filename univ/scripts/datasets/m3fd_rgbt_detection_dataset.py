@@ -87,8 +87,9 @@ class M3FDRGBTDetectionDataset(Dataset):
         return len(self.samples)
 
     def _load_image(self, path: Path) -> torch.Tensor:
-        img = Image.open(path).convert("RGB").resize((self.imgsz, self.imgsz))
-        return TF.to_tensor(img)
+        with Image.open(path) as img:
+            img = img.convert("RGB").resize((self.imgsz, self.imgsz))
+            return TF.to_tensor(img)
 
     def _load_labels(self, path: Path | None) -> torch.Tensor:
         if path is None:
