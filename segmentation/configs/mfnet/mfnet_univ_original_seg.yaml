@@ -1,0 +1,10 @@
+num_classes: 9
+ignore_index: 255
+model: {name: univ_seg, checkpoint: null, freeze_encoder: false}
+data:
+  dataset: mfnet
+  root: /path/to/mfnet
+  train_split: splits/train.txt
+  val_split: splits/val.txt
+  image_size: [224, 224]
+training: {batch_size: 2, workers: 4, epochs: 100, learning_rate: 0.0001, weight_decay: 0.0001}

@@ -1,0 +1,10 @@
+num_classes: 9
+ignore_index: 255
+model: {name: unet_early_fusion, base_channels: 32}
+data:
+  dataset: mfnet
+  root: /path/to/mfnet
+  train_split: splits/train.txt
+  val_split: splits/val.txt
+  image_size: [480, 640]
+training: {batch_size: 4, workers: 4, epochs: 100, learning_rate: 0.0001, weight_decay: 0.0001}
