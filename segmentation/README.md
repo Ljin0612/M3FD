@@ -32,15 +32,15 @@ dataset/
 └── splits/{train,val}.txt
 ```
 
-Copy one of the YAML files in `configs/`, set the dataset root, class count and
+Choose the MFNet or FMB YAML in `configs/<dataset>/`, set the dataset root, class count and
 image size, then run a short experiment with:
 
 ```bash
-python segmentation/scripts/train.py \
-  --config segmentation/configs/unet_early_fusion.yaml \
+python segmentation/scripts/train_seg.py \
+  --config segmentation/configs/mfnet/mfnet_rgbir_early_unet.yaml \
   --output segmentation/runs/early_fusion
-python segmentation/scripts/evaluate.py \
-  --config segmentation/configs/unet_early_fusion.yaml \
+python segmentation/scripts/eval_seg.py \
+  --config segmentation/configs/mfnet/mfnet_rgbir_early_unet.yaml \
   --checkpoint segmentation/runs/early_fusion/best.pth
 ```
 
@@ -49,3 +49,7 @@ The UNIV configuration accepts an upstream checkpoint in
 scratch (useful only for smoke testing). UNIV uses a 224×224 input by default,
 matching its fixed positional embedding. No dataset or weights are downloaded
 by these scripts.
+
+Use `check_seg_dataset.py` before training and `visualize_seg.py` to inspect
+class-index masks. The `runs/` and `results/` directories are artifact-only:
+Git retains just their `.gitkeep` placeholders.

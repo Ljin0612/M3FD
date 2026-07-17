@@ -16,7 +16,8 @@ class PairedSegmentationDataset(Dataset):
     automatically, which keeps the loader usable for common PNG/JPEG layouts.
     """
 
-    def __init__(self, root, split, image_size=None, augment=False, ignore_index=255):
+    def __init__(self, root, split, image_size=None, augment=False, ignore_index=255,
+                 folders=None):
         self.root = Path(root)
         split_path = Path(split)
         if not split_path.is_absolute():
@@ -28,6 +29,9 @@ class PairedSegmentationDataset(Dataset):
         self.image_size = tuple(image_size) if image_size else None
         self.augment = augment
         self.ignore_index = ignore_index
+        self.folders = {"rgb": "rgb", "ir": "ir", "mask": "masks"}
+        if folders:
+            self.folders.update(folders)
 
     def __len__(self):
         return len(self.samples)
@@ -44,9 +48,9 @@ class PairedSegmentationDataset(Dataset):
 
     def __getitem__(self, index):
         stem = self.samples[index]
-        rgb = Image.open(self._resolve("rgb", stem)).convert("RGB")
-        ir = Image.open(self._resolve("ir", stem)).convert("L")
-        mask = Image.open(self._resolve("masks", stem))
+        rgb = Image.open(self._resolve(self.folders["rgb"], stem)).convert("RGB")
+        ir = Image.open(self._resolve(self.folders["ir"], stem)).convert("L")
+        mask = Image.open(self._resolve(self.folders["mask"], stem))
         if rgb.size != ir.size or rgb.size != mask.size:
             raise ValueError(f"Unaligned modalities for sample {stem}")
         if self.image_size:
