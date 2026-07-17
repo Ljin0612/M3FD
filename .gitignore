@@ -203,6 +203,16 @@ cython_debug/
 # Temporary file for partial code execution
 tempCodeRunnerFile.py
 
+# Training artifacts (all downstream tasks)
+*.pth
+*.pt
+*.ckpt
+*.csv
+segmentation/runs/*
+!segmentation/runs/.gitkeep
+segmentation/results/*
+!segmentation/results/.gitkeep
+
 # Ruff stuff:
 .ruff_cache/
 
